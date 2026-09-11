@@ -14,10 +14,204 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #0a0e1a;
-  color: #e5e7eb;
+  background-color: var(--app-bg);
+  color: var(--app-text);
+}
+
+/* Shared hover/focus affordance for cards that navigate somewhere on
+   click (Overview's stat cards, insight cards, alert rows, etc). Kept as
+   one class rather than duplicated inline styles so every "clickable
+   card" on the site gets the same feel. */
+.w-clickable-card {
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.w-clickable-card:hover,
+.w-clickable-card:focus-visible {
+  border-color: var(--w-accent-blue);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+.w-clickable-card:focus-visible {
+  outline: 2px solid var(--w-accent-blue);
+  outline-offset: 2px;
 }
 
 html, body, #root {
   height: 100%;
+}
+
+/* ==========================================================================
+   Theming
+
+   Two independent mechanisms, both keyed off `[data-theme]` on <html>
+   (set by src/stores/themeStore.js):
+
+   1. CSS custom properties (--w-*) — consumed directly via `var(--w-x)` in
+      the Figma-matched widgets' inline styles (StatCard, WorkforceHealthCard,
+      HiddenCapacityCard, ActiveAlertsCard, WorkforceIntelligenceCards,
+      SupplyDemandChart, UtilizationPerformanceCard, FilterBar). These never
+      touched Tailwind at all — they were always raw hex in `style={{}}`.
+
+   2. Utility-class overrides below — everything else (Sidebar, Header,
+      Layout, Login, TalentFinder, Projects, AIWorkforceAdvisor, ComingSoon,
+      ErrorBoundary, LoadingSpinner, Overview's own markup) was built with
+      Tailwind's `ink-*`/`brand-*`/`gray-*`/`red-*`/etc. utility classes.
+      Tailwind can't make its own utilities theme-aware via a CSS variable
+      color value and still support the `/opacity` modifier syntax
+      (`bg-red-500/10`) — that modifier is resolved at build time from a
+      literal color, not a var(). Redirecting tailwind.config.js's colors to
+      CSS vars would silently break every `/NN` opacity class in the app.
+      So instead: every Tailwind color utility class actually used anywhere
+      in this app is listed explicitly below with a light-mode override,
+      selected via `html[data-theme="light"] .the-exact-class`. That
+      selector's specificity (0,0,2,1) beats Tailwind's own single-class
+      utility (0,0,1,0) without needing !important, and doesn't touch a
+      single component file's className.
+   ========================================================================== */
+
+:root {
+  --app-bg: #0a0e1a;
+  --app-text: #e5e7eb;
+
+  --w-card-bg: #131c2e;
+  --w-card-border: #1e2d45;
+  --w-sunken-bg: #0d1626;
+  --w-divider: #1a2740;
+  /* Text tokens below are tuned to clear WCAG AA (4.5:1 for normal text)
+     against --w-card-bg (#131c2e) — the lightest background any of these
+     actually sit on in practice, so the worst case. Verified by computed
+     relative-luminance contrast, not by eye:
+       text-primary   ~13.9:1  (was already fine, unchanged)
+       text-secondary  ~8.1:1  (was #64748b → 3.6:1, FAILED AA)
+       text-tertiary   ~7.8:1  (was #94a3b8 → 6.6:1, passed but brightened
+                                 further per "make text brighter" request)
+       text-label      ~5.2:1  (was #3d5373 → 2.2:1, FAILED AA badly —
+                                 this was the "TOTAL WORKFORCE"-style
+                                 uppercase micro-label color used on every
+                                 stat card/table header across the app)
+     accent-blue/violet/indigo got a small hue-preserving brighten too
+     (were 4.48:1 / 4.02:1 / 3.81:1 as plain text — the two under 4.5
+     failed AA outright, accent-blue was a hair under). Left as TEXT-only
+     fixes: these colors are also used as filled-button backgrounds
+     elsewhere (e.g. white text on accent-blue), which is a separate,
+     much larger contrast question (foreground vs. a colored fill,
+     hundreds of buttons) not touched here — see PR description. */
+  --w-text-primary: #e2e8f4;
+  --w-text-secondary: #a6b4cc;
+  --w-text-tertiary: #a0b1c9;
+  --w-text-label: #7b90ab;
+  --w-accent-blue: #4784f9;
+  --w-green: #22c55e;
+  --w-red: #ef4444;
+  --w-amber: #f59e0b;
+  --w-violet: #9b74f7;
+  --w-cyan: #06b6d4;
+  --w-indigo: #7b7ef5;
+  --w-orange: #f97316;
+  --w-yellow: #eab308;
+  /* Fixed in both themes: dark text sitting on a light/colored button
+     (e.g. HiddenCapacityCard's amber "Optimize Workforce" button). Not
+     theme-inverted like --w-sunken-bg, which it happens to equal in dark
+     mode by coincidence, not by relation. */
+  --w-text-on-accent-dark: #0d1626;
+}
+
+html[data-theme='light'] {
+  --app-bg: #f8fafc;
+  --app-text: #1e293b;
+
+  --w-card-bg: #ffffff;
+  --w-card-border: #e2e8f0;
+  --w-sunken-bg: #f1f5f9;
+  --w-divider: #e8edf3;
+  --w-text-primary: #0f172a;
+  --w-text-secondary: #475569;
+  --w-text-tertiary: #64748b;
+  --w-text-label: #94a3b8;
+  --w-accent-blue: #2563eb;
+  --w-green: #16a34a;
+  --w-red: #dc2626;
+  --w-amber: #b45309;
+  --w-violet: #7c3aed;
+  --w-cyan: #0891b2;
+  --w-indigo: #4f46e5;
+  --w-orange: #c2410c;
+  --w-yellow: #a16207;
+}
+
+/* -- Tailwind utility overrides: accessibility fix for the dark theme's
+      OWN class output (default, no [data-theme] needed) --------------------
+
+   Tailwind's default gray-500 (#6b7280) and gray-600 (#4b5563) — used
+   directly (not through the --w-* system) by Sidebar/Header/Login/
+   Overview/ComingSoon for body text, breadcrumbs, search results,
+   profile role labels, and locked-nav-item text — measure at 3.98:1 and
+   2.55:1 against this app's dark ink background (#0A0E1A / #0D1220),
+   both well under WCAG AA's 4.5:1 for normal text. Overridden here at
+   higher specificity than Tailwind's own utility (same technique the
+   light-mode block below already uses), rather than editing every
+   className in every file. gray-100/200/300/400 and every other color
+   already clear 4.5:1 and are left untouched. */
+html:not([data-theme='light']) {
+  .text-gray-500 { color: #9aa9c2; } /* ~7.6:1 vs ink-900 */
+  .text-gray-600 { color: #7c8ca8; } /* ~5.1:1 vs ink-900 — was 2.55:1 */
+  .placeholder-gray-500::placeholder { color: #9aa9c2; }
+  .hover\:text-gray-300:hover { color: #cbd5e1; }
+}
+
+/* -- Tailwind utility overrides (light mode only; dark is Tailwind's own
+      class output except the accessibility fix above) -------------------- */
+
+html[data-theme='light'] {
+  /* Backgrounds */
+  .bg-ink-950 { background-color: #f8fafc; }
+  .bg-ink-900 { background-color: #ffffff; }
+  .bg-ink-800 { background-color: #ffffff; }
+  .bg-ink-700 { background-color: #f1f5f9; }
+  .hover\:bg-ink-700\/50:hover { background-color: rgba(15, 23, 42, 0.05); }
+  .bg-ink-600 { background-color: #e2e8f0; }
+  .hover\:bg-ink-700:hover { background-color: #f1f5f9; }
+
+  .bg-red-500 { background-color: #dc2626; }
+  .bg-red-500\/10 { background-color: rgba(220, 38, 38, 0.08); }
+  .bg-red-500\/15 { background-color: rgba(220, 38, 38, 0.12); }
+  .bg-gray-500\/15 { background-color: rgba(100, 116, 139, 0.12); }
+  .bg-emerald-500\/10 { background-color: rgba(5, 150, 105, 0.08); }
+  .bg-emerald-500\/15 { background-color: rgba(5, 150, 105, 0.12); }
+  .bg-amber-500\/15 { background-color: rgba(180, 83, 9, 0.12); }
+  .bg-violet-500\/10 { background-color: rgba(124, 58, 237, 0.08); }
+  .bg-violet-500\/20 { background-color: rgba(124, 58, 237, 0.15); }
+  .bg-blue-500\/10 { background-color: rgba(37, 99, 235, 0.08); }
+  .bg-blue-500\/15 { background-color: rgba(37, 99, 235, 0.12); }
+
+  /* Borders */
+  .border-ink-700 { border-color: #e2e8f0; }
+  .border-ink-600 { border-color: #e2e8f0; }
+  .divide-ink-700 > :not([hidden]) ~ :not([hidden]) { border-color: #e2e8f0; }
+  .border-brand-500\/50 { border-color: rgba(59, 91, 255, 0.5); }
+  .border-red-500\/30 { border-color: rgba(220, 38, 38, 0.3); }
+  .border-red-500\/20 { border-color: rgba(220, 38, 38, 0.2); }
+  .border-emerald-500\/20 { border-color: rgba(5, 150, 105, 0.2); }
+  .border-violet-500\/20 { border-color: rgba(124, 58, 237, 0.2); }
+  .border-blue-500\/20 { border-color: rgba(37, 99, 235, 0.2); }
+
+  /* Text */
+  .text-gray-100 { color: #0f172a; }
+  .text-gray-200 { color: #1e293b; }
+  .text-gray-300 { color: #334155; }
+  .text-gray-400 { color: #475569; }
+  .text-gray-500 { color: #64748b; }
+  .text-gray-600 { color: #94a3b8; }
+  .text-red-400 { color: #dc2626; }
+  .text-blue-400 { color: #2563eb; }
+  .text-emerald-400 { color: #059669; }
+  .text-amber-400 { color: #b45309; }
+  .text-violet-300 { color: #7c3aed; }
+  .text-brand-400 { color: #2f46cc; }
+  .placeholder-gray-500::placeholder { color: #94a3b8; }
+
+  .hover\:text-gray-100:hover { color: #0f172a; }
+  .hover\:text-gray-200:hover { color: #1e293b; }
+  .hover\:text-gray-300:hover { color: #334155; }
 }

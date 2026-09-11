@@ -93,7 +93,7 @@ router.get('/:id', async (req, res) => {
  * POST /api/employees
  * Create employee profile
  */
-router.post('/', authorize('hr_admin', 'executive'), async (req, res) => {
+router.post('/', authorize('hr_admin', 'executive', 'manager'), async (req, res) => {
   const { user_id, job_title, employment_status, hire_date } = req.body;
 
   const result = await db.query(

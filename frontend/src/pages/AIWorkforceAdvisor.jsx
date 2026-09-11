@@ -1,262 +1,223 @@
-import React, { useState } from 'react';
-import { SparklesIcon } from '@heroicons/react/24/outline';
-import apiClient from '../api/client';
+import React, { useState, useRef, useEffect } from 'react';
+import { findBestIntent, FOLLOW_UPS } from '../data/aiAdvisorData';
+import AdvisorResultCard from '../components/AdvisorResultCard';
+
+// Matches the Coforge Workforce Intelligence Figma "AI Workforce Advisor"
+// screen (node 8:12500). REPLACES the page's earlier version — a real
+// backend-driven tool panel wired to four live Claude-powered endpoints
+// — since this design is a free-text chat interface and no free-text
+// chat endpoint exists on the backend.
+//
+// Rebuilt on data/aiAdvisorData.js: free text is parsed for known
+// entities (business unit, skill, project, a percentage threshold, a
+// timeframe) and scored against a fixed set of intents — the same
+// rule-based "vibe search" convention already used by Talent Finder
+// (data/talentData.js), not a live language model call. A matching
+// question no longer has to be typed verbatim; loosely-worded or
+// paraphrased versions still land on the right intent. Every answer
+// renders as a real interactive card (AdvisorResultCard) — metrics, a
+// ranked list, and a CTA into the actual page the numbers come from —
+// instead of a flat sentence, plus contextual follow-up suggestions.
+const SUGGESTIONS = [
+  'Where do we have excess capacity?',
+  'Which employees can staff Project Phoenix?',
+  'Which skills will be short in Q4?',
+  'How can we reduce bench by 10%?',
+  'Show me resources becoming available next month.',
+  'Show me employees with more than 30% available capacity.',
+  'Which partially allocated employees can support Project Phoenix?',
+  'How can we improve utilization without hiring?',
+  'Should we hire or upskill for GenAI demand?',
+];
+
+function Chip({ text, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left"
+      style={{
+        background: 'var(--w-sunken-bg)',
+        border: '1px solid var(--w-card-border)',
+        borderRadius: '10px',
+        padding: '16px',
+      }}
+    >
+      <span style={{ color: 'var(--w-indigo)', marginRight: '8px' }}>✦</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: 'var(--w-text-tertiary)' }}>{text}</span>
+    </button>
+  );
+}
+
+function EntityPills({ entities }) {
+  const pills = [
+    entities.businessUnit && { key: 'bu', label: entities.businessUnit },
+    entities.skill && { key: 'skill', label: entities.skill },
+    entities.project && { key: 'project', label: entities.project },
+    entities.percentageThreshold != null && { key: 'pct', label: `>${entities.percentageThreshold}%` },
+    entities.timeframeDays != null && { key: 'time', label: `within ${entities.timeframeDays}d` },
+  ].filter(Boolean);
+  if (pills.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" style={{ marginTop: '6px' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', color: 'var(--w-text-label)' }}>Understood:</span>
+      {pills.map((p) => (
+        <span key={p.key} style={{ background: 'color-mix(in srgb, var(--w-accent-blue) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--w-accent-blue) 25%, transparent)', borderRadius: '20px', padding: '2px 9px', fontFamily: 'Inter, sans-serif', fontSize: '10px', color: 'var(--w-accent-blue)' }}>
+          {p.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ChatTurn({ turn, onFollowUp }) {
+  if (turn.role === 'user') {
+    return (
+      <div className="flex" style={{ justifyContent: 'flex-end' }}>
+        <div style={{ maxWidth: '70%', background: 'linear-gradient(178deg, var(--w-indigo) 0%, var(--w-accent-blue) 100%)', borderRadius: '12px', padding: '12px 16px', color: '#FFFFFF', fontFamily: 'Inter, sans-serif', fontSize: '14px', lineHeight: '21px' }}>
+          {turn.text}
+        </div>
+      </div>
+    );
+  }
+  const followUps = FOLLOW_UPS[turn.intentId] || [];
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <div className="flex items-start gap-2">
+        <span style={{ fontSize: '10px', color: 'var(--w-indigo)', border: '1px solid color-mix(in srgb, var(--w-indigo) 35%, transparent)', borderRadius: '10px', padding: '2px 8px', fontFamily: '"DM Mono", monospace', textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap' }}>
+          {turn.intentId === 'fallback' ? 'unmatched' : 'matched'}
+        </span>
+      </div>
+      <AdvisorResultCard card={turn.card} />
+      <EntityPills entities={turn.entities} />
+      {followUps.length > 0 && (
+        <div className="flex flex-wrap gap-2" style={{ marginTop: '4px' }}>
+          {followUps.map((f) => (
+            <button
+              key={f}
+              onClick={() => onFollowUp(f)}
+              style={{ background: 'var(--w-card-bg)', border: '1px solid var(--w-card-border)', borderRadius: '20px', padding: '5px 12px', fontFamily: 'Inter, sans-serif', fontSize: '11px', color: 'var(--w-text-secondary)', whiteSpace: 'nowrap' }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AIWorkforceAdvisor() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [inputs, setInputs] = useState({
-    department: 'Engineering',
-    employee_id: '',
-    project_id: '',
-  });
+  const [turns, setTurns] = useState([]);
+  const [draft, setDraft] = useState('');
+  const bottomRef = useRef(null);
 
-  const analyzeTeamPerformance = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.post('/intelligence/team-analysis', {
-        department: inputs.department,
-      });
-      setResult(response.data);
-    } catch (err) {
-      setError('Failed to generate analysis');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [turns]);
 
-  const analyzeSkillGaps = async () => {
-    if (!inputs.employee_id || !inputs.project_id) {
-      setError('Please enter employee ID and project ID');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.post('/intelligence/skill-gaps', {
-        employee_id: parseInt(inputs.employee_id),
-        project_id: parseInt(inputs.project_id),
-      });
-      setResult(response.data);
-    } catch (err) {
-      setError('Failed to analyze skill gaps');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateHeadcountForecast = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.post('/intelligence/headcount-forecast');
-      setResult(response.data);
-    } catch (err) {
-      setError('Failed to generate forecast');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const assessFlightRisk = async () => {
-    if (!inputs.employee_id) {
-      setError('Please enter employee ID');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.post('/intelligence/flight-risk', {
-        employee_id: parseInt(inputs.employee_id),
-      });
-      setResult(response.data);
-    } catch (err) {
-      setError('Failed to assess flight risk');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  const send = (text) => {
+    const question = text.trim();
+    if (!question) return;
+    const { intent, entities, card } = findBestIntent(question);
+    setTurns((prev) => [...prev, { role: 'user', text: question }, { role: 'assistant', intentId: intent.id, entities, card }]);
+    setDraft('');
   };
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 flex items-center justify-center">
-          <SparklesIcon className="w-6 h-6 text-white" />
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3" style={{ padding: '2rem 2rem 0' }}>
+        <div className="flex items-center gap-4">
+          <div
+            className="flex items-center justify-center shrink-0"
+            style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundImage: 'linear-gradient(135deg, var(--w-indigo) 0%, var(--w-accent-blue) 100%)' }}
+          >
+            <span style={{ fontSize: '20px', color: '#FFFFFF' }}>✦</span>
+          </div>
+          <div>
+            <h1 style={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, fontSize: '24px', color: 'var(--w-text-primary)' }}>AI Workforce Advisor</h1>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--w-text-tertiary)', marginTop: '2px' }}>
+              Ask in your own words — capacity, staffing, skills, utilization, bench, or a named business unit, skill or project.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-100">AI Workforce Advisor</h1>
-          <p className="text-gray-500 mt-1">Ask questions about workforce capacity, staffing, utilization and future demand.</p>
+        <div className="flex items-center gap-2.5">
+          <span style={{ background: 'color-mix(in srgb, var(--w-green) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--w-green) 25%, transparent)', borderRadius: '6px', padding: '6px 12px', fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: 'var(--w-green)', whiteSpace: 'nowrap' }}>
+            ● Rule-based query matching
+          </span>
+          <span style={{ background: 'color-mix(in srgb, var(--w-accent-blue) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--w-accent-blue) 25%, transparent)', borderRadius: '6px', padding: '6px 12px', fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: 'var(--w-accent-blue)', whiteSpace: 'nowrap' }}>
+            48,620 employees indexed
+          </span>
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      <div className="flex-1 overflow-y-auto" style={{ padding: '2rem' }}>
+        {turns.length === 0 ? (
+          <div className="flex flex-col items-center" style={{ paddingTop: '4rem' }}>
+            <span style={{ fontSize: '28px', color: 'var(--w-text-primary)' }}>✦</span>
+            <h2 style={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, fontSize: '22px', color: 'var(--w-text-primary)', marginTop: '16px' }}>
+              How can I help with workforce planning today?
+            </h2>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: 'var(--w-text-secondary)', marginTop: '8px', maxWidth: '520px', textAlign: 'center' }}>
+              Ask about capacity, skills, staffing gaps, utilization, bench, or name a specific business unit, skill or project — you don't need the exact wording below.
+            </p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Input Panel */}
-        <div className="bg-ink-800 border border-ink-600 rounded-lg p-6">
-          <h3 className="text-lg font-bold text-gray-100 mb-6">Analysis Tools</h3>
-
-          <div className="space-y-4">
-            {/* Team Analysis */}
-            <div className="border border-ink-600 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-100">📊 Team Performance</h4>
-              <p className="text-sm text-gray-500 mt-1">Analyze team metrics and insights</p>
-              <div className="mt-4 space-y-3">
-                <input
-                  type="text"
-                  placeholder="Department"
-                  value={inputs.department}
-                  onChange={(e) => setInputs({ ...inputs, department: e.target.value })}
-                  className="w-full px-3 py-2 bg-ink-700 border border-ink-600 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <button
-                  onClick={analyzeTeamPerformance}
-                  disabled={loading}
-                  className="w-full bg-brand-500 text-white py-2 rounded-lg hover:bg-brand-600 disabled:bg-ink-600 disabled:text-gray-500 transition text-sm font-medium"
-                >
-                  {loading ? 'Analyzing...' : 'Analyze'}
-                </button>
-              </div>
-            </div>
-
-            {/* Skill Gaps */}
-            <div className="border border-ink-600 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-100">🎓 Skill Gaps</h4>
-              <p className="text-sm text-gray-500 mt-1">Identify training needs</p>
-              <div className="mt-4 space-y-3">
-                <input
-                  type="number"
-                  placeholder="Employee ID"
-                  value={inputs.employee_id}
-                  onChange={(e) => setInputs({ ...inputs, employee_id: e.target.value })}
-                  className="w-full px-3 py-2 bg-ink-700 border border-ink-600 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <input
-                  type="number"
-                  placeholder="Project ID"
-                  value={inputs.project_id}
-                  onChange={(e) => setInputs({ ...inputs, project_id: e.target.value })}
-                  className="w-full px-3 py-2 bg-ink-700 border border-ink-600 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <button
-                  onClick={analyzeSkillGaps}
-                  disabled={loading}
-                  className="w-full bg-brand-500 text-white py-2 rounded-lg hover:bg-brand-600 disabled:bg-ink-600 disabled:text-gray-500 transition text-sm font-medium"
-                >
-                  {loading ? 'Analyzing...' : 'Analyze'}
-                </button>
-              </div>
-            </div>
-
-            {/* Headcount Forecast */}
-            <div className="border border-ink-600 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-100">📈 Headcount Forecast</h4>
-              <p className="text-sm text-gray-500 mt-1">Strategic hiring insights</p>
-              <button
-                onClick={generateHeadcountForecast}
-                disabled={loading}
-                className="w-full mt-4 bg-brand-500 text-white py-2 rounded-lg hover:bg-brand-600 disabled:bg-ink-600 disabled:text-gray-500 transition text-sm font-medium"
-              >
-                {loading ? 'Generating...' : 'Generate Forecast'}
-              </button>
-            </div>
-
-            {/* Flight Risk */}
-            <div className="border border-ink-600 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-100">⚠️ Flight Risk</h4>
-              <p className="text-sm text-gray-500 mt-1">Detect retention risks</p>
-              <div className="mt-4 space-y-3">
-                <input
-                  type="number"
-                  placeholder="Employee ID"
-                  value={inputs.employee_id}
-                  onChange={(e) => setInputs({ ...inputs, employee_id: e.target.value })}
-                  className="w-full px-3 py-2 bg-ink-700 border border-ink-600 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <button
-                  onClick={assessFlightRisk}
-                  disabled={loading}
-                  className="w-full bg-brand-500 text-white py-2 rounded-lg hover:bg-brand-600 disabled:bg-ink-600 disabled:text-gray-500 transition text-sm font-medium"
-                >
-                  {loading ? 'Assessing...' : 'Assess'}
-                </button>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3" style={{ maxWidth: '800px', width: '100%', marginTop: '32px' }}>
+              {SUGGESTIONS.map((s) => (
+                <Chip key={s} text={s} onClick={() => send(s)} />
+              ))}
             </div>
           </div>
+        ) : (
+          <div className="flex flex-col gap-4" style={{ maxWidth: '900px', margin: '0 auto' }}>
+            {turns.map((t, i) => (
+              <ChatTurn key={i} turn={t} onFollowUp={send} />
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: '0 2rem 2rem' }}>
+        <div
+          className="flex items-center gap-3"
+          style={{
+            maxWidth: '900px',
+            margin: '0 auto',
+            background: 'var(--w-sunken-bg)',
+            border: '1px solid var(--w-card-border)',
+            borderRadius: '10px',
+            padding: '10px 14px',
+          }}
+        >
+          <span style={{ color: 'var(--w-indigo)' }}>✦</span>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && send(draft)}
+            placeholder="Ask in your own words — e.g. “Where is Insurance sitting on spare capacity?”"
+            className="flex-1 bg-transparent outline-none"
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: 'var(--w-text-primary)' }}
+          />
+          <button
+            onClick={() => send(draft)}
+            disabled={!draft.trim()}
+            style={{
+              background: draft.trim() ? 'linear-gradient(178deg, var(--w-indigo) 0%, var(--w-accent-blue) 100%)' : 'var(--w-card-border)',
+              borderRadius: '7px',
+              padding: '9px 18px',
+              fontFamily: '"Outfit", sans-serif',
+              fontWeight: 700,
+              fontSize: '13px',
+              color: draft.trim() ? '#FFFFFF' : 'var(--w-text-label)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Send
+          </button>
         </div>
-
-        {/* Results Panel */}
-        <div className="lg:col-span-2 bg-ink-800 border border-ink-600 rounded-lg p-6">
-          <h3 className="text-lg font-bold text-gray-100 mb-4">Analysis Results</h3>
-
-          {!result && !loading && (
-            <div className="text-center py-12 text-gray-500">
-              <p>Select an analysis tool to generate insights</p>
-            </div>
-          )}
-
-          {loading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500 mb-4"></div>
-                <p className="text-gray-500">Claude is analyzing your data...</p>
-              </div>
-            </div>
-          )}
-
-          {result && !loading && (
-            <div className="space-y-6">
-              {result.metrics && (
-                <div className="bg-blue-500/10 rounded-lg p-6 border border-blue-500/20">
-                  <h4 className="font-semibold text-gray-100 mb-4">📊 Metrics Summary</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    {Object.entries(result.metrics).map(([key, value]) => (
-                      <div key={key}>
-                        <p className="text-gray-500 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                        <p className="text-2xl font-bold text-blue-400">{typeof value === 'number' ? value.toFixed(1) : value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {result.insights && (
-                <div className="bg-emerald-500/10 rounded-lg p-6 border border-emerald-500/20">
-                  <h4 className="font-semibold text-gray-100 mb-4">🧠 Claude Insights</h4>
-                  <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{result.insights}</p>
-                </div>
-              )}
-
-              {result.analysis && (
-                <div className="bg-violet-500/10 rounded-lg p-6 border border-violet-500/20">
-                  <h4 className="font-semibold text-gray-100 mb-4">📋 Analysis</h4>
-                  <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{result.analysis}</p>
-                </div>
-              )}
-
-              {result.assessment && (
-                <div className="bg-red-500/10 rounded-lg p-6 border border-red-500/20">
-                  <h4 className="font-semibold text-gray-100 mb-4">⚠️ Assessment</h4>
-                  <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{result.assessment}</p>
-                </div>
-              )}
-
-              <p className="text-xs text-gray-600">Generated at {result.generatedAt}</p>
-            </div>
-          )}
-        </div>
+        <p style={{ maxWidth: '900px', margin: '6px auto 0', fontFamily: 'Inter, sans-serif', fontSize: '10px', color: 'var(--w-text-label)' }}>
+          Matches your question to a fixed set of workforce intents by keyword and entity overlap — no live language model is called.
+        </p>
       </div>
     </div>
   );

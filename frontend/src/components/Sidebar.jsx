@@ -2,27 +2,19 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import {
-  BellIcon,
   QuestionMarkCircleIcon,
   Cog6ToothIcon,
   ChevronLeftIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import navigation from '../config/navigation';
-import useAuthStore from '../stores/authStore';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join('');
-}
+import { useActiveProfile } from '../stores/profileStore';
+import useAccessStore from '../stores/accessStore';
 
 function Sidebar() {
   const location = useLocation();
-  const { user } = useAuthStore();
+  const profile = useActiveProfile();
+  const hasAccess = useAccessStore((s) => s.hasAccess);
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -39,7 +31,7 @@ function Sidebar() {
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-white font-bold leading-tight truncate">COFORGE</p>
+            <p className="text-gray-100 font-bold leading-tight truncate">COFORGE</p>
             <p className="text-brand-400 text-[10px] font-semibold tracking-wider leading-tight truncate">
               WORKFORCE INTELLIGENCE
             </p>
@@ -54,11 +46,30 @@ function Sidebar() {
         </button>
       </div>
 
-      {/* Nav */}
+      {/* Nav — items the active persona's feature-access matrix
+          (accessStore.js, editable from Administration → Role
+          Management) doesn't permit render locked and non-navigable
+          instead of disappearing entirely, so switching persona doesn't
+          look like the sidebar broke; AccessGuard.jsx backs this up for
+          direct URL navigation / header search too. */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         {navigation.map((item) => {
           const Icon = item.icon;
           const active = location.pathname === item.path;
+          const allowed = hasAccess(profile.id, item.path);
+          if (!allowed) {
+            return (
+              <div
+                key={item.path}
+                title={`${item.label} — not available to ${profile.role}`}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 cursor-not-allowed"
+              >
+                <Icon className="w-5 h-5 shrink-0 opacity-40" />
+                {!collapsed && <span className="truncate opacity-40">{item.label}</span>}
+                {!collapsed && <LockClosedIcon className="w-3.5 h-3.5 shrink-0 ml-auto opacity-50" />}
+              </div>
+            );
+          }
           return (
             <Link
               key={item.path}
@@ -86,15 +97,6 @@ function Sidebar() {
       {/* Bottom section */}
       <div className="border-t border-ink-700 px-3 py-3 space-y-1">
         <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-ink-700 hover:text-gray-100 transition">
-          <span className="relative shrink-0">
-            <BellIcon className="w-5 h-5" />
-            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-              7
-            </span>
-          </span>
-          {!collapsed && <span>Notifications</span>}
-        </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-ink-700 hover:text-gray-100 transition">
           <QuestionMarkCircleIcon className="w-5 h-5 shrink-0" />
           {!collapsed && <span>Help</span>}
         </button>
@@ -103,16 +105,17 @@ function Sidebar() {
           {!collapsed && <span>Settings</span>}
         </button>
 
+        {/* Shows the active persona (profileStore) — switch it from the
+            header's avatar menu (top right), which lists every role
+            (add/edit/delete them from Administration → Role Management). */}
         <div className="flex items-center gap-3 px-3 pt-3 mt-2 border-t border-ink-700">
           <div className="w-8 h-8 shrink-0 rounded-full bg-brand-500 flex items-center justify-center text-white text-xs font-bold">
-            {initials(user?.name)}
+            {profile.initials}
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-100 truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500 capitalize truncate">
-                {user?.role?.replace('_', ' ') || ''}
-              </p>
+              <p className="text-sm font-medium text-gray-100 truncate">{profile.name || profile.role}</p>
+              {profile.name && <p className="text-xs text-gray-500 truncate">{profile.role}</p>}
             </div>
           )}
         </div>

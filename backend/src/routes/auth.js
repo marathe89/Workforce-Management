@@ -10,7 +10,7 @@ const router = express.Router();
  * Create a new user account
  */
 router.post('/signup', async (req, res) => {
-  const { email, name, password, role = 'employee' } = req.body;
+  const { email, name, password, role = 'employee', department, manager_id } = req.body;
 
   if (!email || !name || !password) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -20,10 +20,10 @@ router.post('/signup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await db.query(
-      `INSERT INTO users (email, name, role)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, name, role`,
-      [email, name, role]
+      `INSERT INTO users (email, name, role, department, manager_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, name, role, department, manager_id`,
+      [email, name, role, department || null, manager_id || null]
     );
 
     const user = result.rows[0];
