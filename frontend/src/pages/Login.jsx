@@ -37,7 +37,7 @@ function Login() {
             C
           </div>
           <div>
-            <p className="text-white font-bold leading-tight">COFORGE</p>
+            <p className="text-gray-100 font-bold leading-tight">COFORGE</p>
             <p className="text-brand-400 text-[10px] font-semibold tracking-wider leading-tight">
               WORKFORCE INTELLIGENCE
             </p>

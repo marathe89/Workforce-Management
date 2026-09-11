@@ -11,6 +11,7 @@ import employeeRoutes from './routes/employees.js';
 import projectRoutes from './routes/projects.js';
 import intelligenceRoutes from './routes/intelligence.js';
 import dashboardRoutes from './routes/dashboard.js';
+import userRoutes from './routes/users.js';
 import { authenticate, authorize } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -42,7 +43,8 @@ app.get('/api/docs', (req, res) => {
       employees: '/api/employees',
       projects: '/api/projects',
       intelligence: '/api/intelligence',
-      dashboard: '/api/dashboard'
+      dashboard: '/api/dashboard',
+      users: '/api/users'
     }
   });
 });
@@ -53,6 +55,7 @@ app.use('/api/employees', authenticate, employeeRoutes);
 app.use('/api/projects', authenticate, projectRoutes);
 app.use('/api/intelligence', authenticate, intelligenceRoutes);
 app.use('/api/dashboard', authenticate, dashboardRoutes);
+app.use('/api/users', authenticate, userRoutes);
 
 // 404 handler
 app.use((req, res) => {
