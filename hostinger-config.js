@@ -12,11 +12,11 @@ export default {
     password: process.env.DB_PASSWORD
   },
   frontend: {
-    // Origins allowed to call this API — update with your real Hostinger domain(s).
     allowedOrigins: [
       'http://localhost:3002',
-      'http://your-domain.com:3002',
-      'https://your-domain.com'
+      'https://workforceintelligence.amitmarathe.com',
+      'http://200.234.47.238',
+      'http://200.234.47.238:3002'
     ]
   }
 };
