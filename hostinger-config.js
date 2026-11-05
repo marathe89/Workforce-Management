@@ -12,11 +12,15 @@ export default {
     password: process.env.DB_PASSWORD
   },
   frontend: {
-    allowedOrigins: [
-      'http://localhost:3002',
-      'https://workforceintelligence.amitmarathe.com',
-      'http://200.234.47.238',
-      'http://200.234.47.238:3002'
-    ]
+    // Origins allowed to call this API. Hostinger VPS: 189.72.144.75.
+    // Override with a comma-separated ALLOWED_ORIGINS env var.
+    allowedOrigins: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+      : [
+          'http://localhost:3002',
+          'https://workforceintelligence.amitmarathe.com',
+          'http://189.72.144.75',
+          'http://189.72.144.75:3002'
+        ]
   }
 };
