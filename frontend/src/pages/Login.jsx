@@ -88,13 +88,15 @@ function Login() {
           </button>
         </form>
 
-        <div className="mt-6 pt-6 border-t border-ink-600">
-          <p className="text-sm text-gray-500 text-center">
-            Demo Credentials:<br />
-            Email: manager@company.com<br />
-            Password: password123
-          </p>
-        </div>
+        {import.meta.env.DEV && (
+          <div className="mt-6 pt-6 border-t border-ink-600">
+            <p className="text-sm text-gray-500 text-center">
+              Demo Credentials:<br />
+              Email: manager@company.com<br />
+              Password: password123
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

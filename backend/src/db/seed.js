@@ -1,9 +1,11 @@
+import bcrypt from 'bcrypt';
 import db from './connection.js';
 
 /**
- * Seed sample data, including the demo login user documented in the README
- * (manager@company.com / password123 — note the users table has no password
- * column, so /api/auth/login only checks that the email exists).
+ * Seed sample data, including the demo login users documented in the README
+ * (manager@company.com and hr@company.com, password from SEED_DEMO_PASSWORD,
+ * default "password123" for local development). Seeded employees get no
+ * password and cannot sign in until one is set with `npm run set-password`.
  * Safe to run multiple times: skips if users already exist.
  */
 async function seed() {
@@ -13,17 +15,19 @@ async function seed() {
     return;
   }
 
+  const demoHash = await bcrypt.hash(process.env.SEED_DEMO_PASSWORD || 'password123', 10);
+
   const manager = await db.query(
-    `INSERT INTO users (email, name, role, department)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    ['manager@company.com', 'Jordan Blake', 'manager', 'Engineering']
+    `INSERT INTO users (email, name, role, department, password_hash)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    ['manager@company.com', 'Jordan Blake', 'manager', 'Engineering', demoHash]
   );
   const managerId = manager.rows[0].id;
 
   const hrAdmin = await db.query(
-    `INSERT INTO users (email, name, role, department)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    ['hr@company.com', 'Priya Nair', 'hr_admin', 'People Ops']
+    `INSERT INTO users (email, name, role, department, password_hash)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    ['hr@company.com', 'Priya Nair', 'hr_admin', 'People Ops', demoHash]
   );
 
   const employees = [

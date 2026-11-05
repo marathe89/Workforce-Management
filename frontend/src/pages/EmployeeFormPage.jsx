@@ -137,7 +137,7 @@ function EmployeeFormPage() {
         <div className="flex flex-wrap gap-3">
           <TextInput labelText="Full Name *" value={form.name} onChange={set('name')} placeholder="e.g. Meera Iyer" required />
           <TextInput labelText="Email *" type="email" value={form.email} onChange={set('email')} placeholder="meera.iyer@company.com" required disabled={isEdit} hint={isEdit ? 'Email can\'t be changed here.' : undefined} />
-          {!isEdit && <TextInput labelText="Temporary Password *" type="text" value={form.password} onChange={set('password')} placeholder="Not verified at login in this build" required />}
+          {!isEdit && <TextInput labelText="Temporary Password *" type="text" value={form.password} onChange={set('password')} placeholder="At least 8 characters" required />}
         </div>
         <div className="flex flex-wrap gap-3">
           <TextInput labelText="Department" value={form.department} onChange={set('department')} placeholder="e.g. Engineering" />

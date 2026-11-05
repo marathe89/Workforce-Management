@@ -18,13 +18,17 @@ async function migrate() {
   `);
 
   if (exists.rows[0].exists) {
-    console.log('✓ Schema already applied, skipping migration');
-    return;
+    console.log('✓ Schema already applied, skipping base schema');
+  } else {
+    const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
+    await db.query(schema);
+    console.log('✓ Schema applied successfully');
   }
 
-  const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
-  await db.query(schema);
-  console.log('✓ Schema applied successfully');
+  // Incremental changes for databases created before they were added to
+  // workforce-schema.sql. Each must be idempotent.
+  await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)');
+  console.log('✓ Incremental migrations applied');
 }
 
 migrate()
