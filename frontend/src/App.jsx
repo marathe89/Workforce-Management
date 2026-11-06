@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './stores/authStore';
+import apiClient from './api/client';
+import LoadingSpinner from './components/LoadingSpinner';
 import Login from './pages/Login';
 import Overview from './pages/Overview';
 import TalentFinder from './pages/TalentFinder';
@@ -23,8 +25,53 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import AccessGuard from './components/AccessGuard';
 
+// Demo mode: skip the login screen and drop visitors straight on the
+// dashboard. The backend /api/auth/login only checks that the email exists
+// (no password), so we auto-authenticate as the seeded demo account to get a
+// real token — every protected API call keeps working. Set VITE_DEMO_AUTOLOGIN
+// to 'false' to restore the normal login screen.
+const DEMO_AUTOLOGIN = import.meta.env.VITE_DEMO_AUTOLOGIN !== 'false';
+const DEMO_EMAIL = import.meta.env.VITE_DEMO_EMAIL || 'manager@company.com';
+const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || 'password123';
+
 function App() {
-  const { token } = useAuthStore();
+  const { token, login } = useAuthStore();
+  const [bootstrapping, setBootstrapping] = useState(DEMO_AUTOLOGIN && !token);
+
+  useEffect(() => {
+    if (!DEMO_AUTOLOGIN || token) {
+      setBootstrapping(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.post('/auth/login', {
+          email: DEMO_EMAIL,
+          password: DEMO_PASSWORD,
+        });
+        if (!cancelled) login(data.user, data.token);
+      } catch {
+        // Auto-login unavailable (e.g. backend unreachable) — fall back to
+        // the normal login screen rather than blocking the app.
+      } finally {
+        if (!cancelled) setBootstrapping(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, login]);
+
+  if (bootstrapping) {
+    return (
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
